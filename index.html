@@ -1,1 +1,1130 @@
-test
+<!DOCTYPE HTML>
+<html>
+<head>
+<title>JabRef references</title>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<script type="text/javascript">
+<!--
+// QuickSearch script for JabRef HTML export 
+// Version: 3.0
+//
+// Copyright (c) 2006-2011, Mark Schenk
+//
+// This software is distributed under a Creative Commons Attribution 3.0 License
+// http://creativecommons.org/licenses/by/3.0/
+//
+// Features:
+// - intuitive find-as-you-type searching
+//    ~ case insensitive
+//    ~ ignore diacritics (optional)
+//
+// - search with/without Regular Expressions
+// - match BibTeX key
+//
+
+// Search settings
+var searchAbstract = true;	// search in abstract
+var searchReview = true;	// search in review
+
+var noSquiggles = true; 	// ignore diacritics when searching
+var searchRegExp = false; 	// enable RegExp searches
+
+
+if (window.addEventListener) {
+	window.addEventListener("load",initSearch,false); }
+else if (window.attachEvent) {
+	window.attachEvent("onload", initSearch); }
+
+function initSearch() {
+	// check for quick search table and searchfield
+	if (!document.getElementById('qs_table')||!document.getElementById('quicksearch')) { return; }
+
+	// load all the rows and sort into arrays
+	loadTableData();
+	
+	//find the query field
+	qsfield = document.getElementById('qs_field');
+
+	// previous search term; used for speed optimisation
+	prevSearch = '';
+
+	//find statistics location
+	stats = document.getElementById('stat');
+	setStatistics(-1);
+	
+	// set up preferences
+	initPreferences();
+
+	// shows the searchfield
+	document.getElementById('quicksearch').style.display = 'block';
+	document.getElementById('qs_field').onkeyup = quickSearch;
+}
+
+function loadTableData() {
+	// find table and appropriate rows
+	searchTable = document.getElementById('qs_table');
+	var allRows = searchTable.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
+
+	// split all rows into entryRows and infoRows (e.g. abstract, review, bibtex)
+	entryRows = new Array(); infoRows = new Array(); absRows = new Array(); revRows = new Array();
+
+	// get data from each row
+	entryRowsData = new Array(); absRowsData = new Array(); revRowsData = new Array(); 
+	
+	BibTeXKeys = new Array();
+	
+	for (var i=0, k=0, j=0; i<allRows.length;i++) {
+		if (allRows[i].className.match(/entry/)) {
+			entryRows[j] = allRows[i];
+			entryRowsData[j] = stripDiacritics(getTextContent(allRows[i]));
+			allRows[i].id ? BibTeXKeys[j] = allRows[i].id : allRows[i].id = 'autokey_'+j;
+			j ++;
+		} else {
+			infoRows[k++] = allRows[i];
+			// check for abstract/review
+			if (allRows[i].className.match(/abstract/)) {
+				absRows.push(allRows[i]);
+				absRowsData[j-1] = stripDiacritics(getTextContent(allRows[i]));
+			} else if (allRows[i].className.match(/review/)) {
+				revRows.push(allRows[i]);
+				revRowsData[j-1] = stripDiacritics(getTextContent(allRows[i]));
+			}
+		}
+	}
+	//number of entries and rows
+	numEntries = entryRows.length;
+	numInfo = infoRows.length;
+	numAbs = absRows.length;
+	numRev = revRows.length;
+}
+
+function quickSearch(){
+	
+	tInput = qsfield;
+
+	if (tInput.value.length == 0) {
+		showAll();
+		setStatistics(-1);
+		qsfield.className = '';
+		return;
+	} else {
+		t = stripDiacritics(tInput.value);
+
+		if(!searchRegExp) { t = escapeRegExp(t); }
+			
+		// only search for valid RegExp
+		try {
+			textRegExp = new RegExp(t,"i");
+			closeAllInfo();
+			qsfield.className = '';
+		}
+			catch(err) {
+			prevSearch = tInput.value;
+			qsfield.className = 'invalidsearch';
+			return;
+		}
+	}
+	
+	// count number of hits
+	var hits = 0;
+
+	// start looping through all entry rows
+	for (var i = 0; cRow = entryRows[i]; i++){
+
+		// only show search the cells if it isn't already hidden OR if the search term is getting shorter, then search all
+		if(cRow.className.indexOf('noshow')==-1 || tInput.value.length <= prevSearch.length){
+			var found = false; 
+
+			if (entryRowsData[i].search(textRegExp) != -1 || BibTeXKeys[i].search(textRegExp) != -1){ 
+				found = true;
+			} else {
+				if(searchAbstract && absRowsData[i]!=undefined) {
+					if (absRowsData[i].search(textRegExp) != -1){ found=true; } 
+				}
+				if(searchReview && revRowsData[i]!=undefined) {
+					if (revRowsData[i].search(textRegExp) != -1){ found=true; } 
+				}
+			}
+			
+			if (found){
+				cRow.className = 'entry show';
+				hits++;
+			} else {
+				cRow.className = 'entry noshow';
+			}
+		}
+	}
+
+	// update statistics
+	setStatistics(hits)
+	
+	// set previous search value
+	prevSearch = tInput.value;
+}
+
+
+// Strip Diacritics from text
+// http://stackoverflow.com/questions/990904/javascript-remove-accents-in-strings
+
+// String containing replacement characters for stripping accents 
+var stripstring = 
+    'AAAAAAACEEEEIIII'+
+    'DNOOOOO.OUUUUY..'+
+    'aaaaaaaceeeeiiii'+
+    'dnooooo.ouuuuy.y'+
+    'AaAaAaCcCcCcCcDd'+
+    'DdEeEeEeEeEeGgGg'+
+    'GgGgHhHhIiIiIiIi'+
+    'IiIiJjKkkLlLlLlL'+
+    'lJlNnNnNnnNnOoOo'+
+    'OoOoRrRrRrSsSsSs'+
+    'SsTtTtTtUuUuUuUu'+
+    'UuUuWwYyYZzZzZz.';
+
+function stripDiacritics(str){
+
+    if(noSquiggles==false){
+        return str;
+    }
+
+    var answer='';
+    for(var i=0;i<str.length;i++){
+        var ch=str[i];
+        var chindex=ch.charCodeAt(0)-192;   // Index of character code in the strip string
+        if(chindex>=0 && chindex<stripstring.length){
+            // Character is within our table, so we can strip the accent...
+            var outch=stripstring.charAt(chindex);
+            // ...unless it was shown as a '.'
+            if(outch!='.')ch=outch;
+        }
+        answer+=ch;
+    }
+    return answer;
+}
+
+// http://stackoverflow.com/questions/3446170/escape-string-for-use-in-javascript-regex
+// NOTE: must escape every \ in the export code because of the JabRef Export...
+function escapeRegExp(str) {
+  return str.replace(/[-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, "\\$&");
+}
+
+function toggleInfo(articleid,info) {
+
+	var entry = document.getElementById(articleid);
+	var abs = document.getElementById('abs_'+articleid);
+	var rev = document.getElementById('rev_'+articleid);
+	var bib = document.getElementById('bib_'+articleid);
+	
+	if (abs && info == 'abstract') {
+		abs.className.indexOf('noshow') == -1?abs.className = 'abstract noshow':abs.className = 'abstract show';
+	} else if (rev && info == 'review') {
+		rev.className.indexOf('noshow') == -1?rev.className = 'review noshow':rev.className = 'review show';
+	} else if (bib && info == 'bibtex') {
+		bib.className.indexOf('noshow') == -1?bib.className = 'bibtex noshow':bib.className = 'bibtex show';
+	} else { 
+		return;
+	}
+
+	// check if one or the other is available
+	var revshow; var absshow; var bibshow;
+	(abs && abs.className.indexOf('noshow') == -1)? absshow = true: absshow = false;
+	(rev && rev.className.indexOf('noshow') == -1)? revshow = true: revshow = false;	
+	(bib && bib.className.indexOf('noshow') == -1)? bibshow = true: bibshow = false;
+	
+	// highlight original entry
+	if(entry) {
+		if (revshow || absshow || bibshow) {
+		entry.className = 'entry highlight show';
+		} else {
+		entry.className = 'entry show';
+		}
+	}
+	
+	// When there's a combination of abstract/review/bibtex showing, need to add class for correct styling
+	if(absshow) {
+		(revshow||bibshow)?abs.className = 'abstract nextshow':abs.className = 'abstract';
+	} 
+	if (revshow) {
+		bibshow?rev.className = 'review nextshow': rev.className = 'review';
+	}	
+	
+}
+
+function setStatistics (hits) {
+	if(hits < 0) { hits=numEntries; }
+	if(stats) { stats.firstChild.data = hits + '/' + numEntries}
+}
+
+function getTextContent(node) {
+	// Function written by Arve Bersvendsen
+	// http://www.virtuelvis.com
+	
+	if (node.nodeType == 3) {
+	return node.nodeValue;
+	} // text node
+	if (node.nodeType == 1 && node.className != "infolinks") { // element node
+	var text = [];
+	for (var chld = node.firstChild;chld;chld=chld.nextSibling) {
+		text.push(getTextContent(chld));
+	}
+	return text.join("");
+	} return ""; // some other node, won't contain text nodes.
+}
+
+function showAll(){
+	closeAllInfo();
+	for (var i = 0; i < numEntries; i++){ entryRows[i].className = 'entry show'; }
+}
+
+function closeAllInfo(){
+	for (var i=0; i < numInfo; i++){
+		if (infoRows[i].className.indexOf('noshow') ==-1) {
+			infoRows[i].className = infoRows[i].className + ' noshow';
+		}
+	}
+}
+
+function clearQS() {
+	qsfield.value = '';
+	showAll();
+}
+
+function redoQS(){
+	showAll();
+	quickSearch(qsfield);
+}
+
+function updateSetting(obj){
+	var option = obj.id;
+	var checked = obj.value;
+
+	switch(option)
+	 {
+	 case "opt_searchAbs":
+	   searchAbstract=!searchAbstract;
+	   redoQS();
+	   break;
+	 case "opt_searchRev":
+	   searchReview=!searchReview;
+	   redoQS();
+	   break;
+	 case "opt_useRegExp":
+	   searchRegExp=!searchRegExp;
+	   redoQS();
+	   break;
+	 case "opt_noAccents":
+	   noSquiggles=!noSquiggles;
+	   loadTableData();
+	   redoQS();
+	   break;
+	 }
+}
+
+function initPreferences(){
+	if(searchAbstract){document.getElementById("opt_searchAbs").checked = true;}
+	if(searchReview){document.getElementById("opt_searchRev").checked = true;}
+	if(noSquiggles){document.getElementById("opt_noAccents").checked = true;}
+	if(searchRegExp){document.getElementById("opt_useRegExp").checked = true;}
+	
+	if(numAbs==0) {document.getElementById("opt_searchAbs").parentNode.style.display = 'none';}
+	if(numRev==0) {document.getElementById("opt_searchRev").parentNode.style.display = 'none';}
+}
+
+function toggleSettings(){
+	var togglebutton = document.getElementById('showsettings');
+	var settings = document.getElementById('settings');
+	
+	if(settings.className == "hidden"){
+		settings.className = "show";
+		togglebutton.innerText = "close settings";
+		togglebutton.textContent = "close settings";
+	}else{
+		settings.className = "hidden";
+		togglebutton.innerText = "settings...";		
+		togglebutton.textContent = "settings...";
+	}
+}
+
+-->
+</script>
+<style type="text/css">
+body { background-color: white; font-family: Arial, sans-serif; font-size: 13px; line-height: 1.2; padding: 1em; color: #2E2E2E; margin: auto 2em; }
+
+form#quicksearch { width: auto; border-style: solid; border-color: gray; border-width: 1px 0px; padding: 0.7em 0.5em; display:none; position:relative; }
+span#searchstat {padding-left: 1em;}
+
+div#settings { margin-top:0.7em; /* border-bottom: 1px transparent solid; background-color: #efefef; border: 1px grey solid; */ }
+div#settings ul {margin: 0; padding: 0; }
+div#settings li {margin: 0; padding: 0 1em 0 0; display: inline; list-style: none; }
+div#settings li + li { border-left: 2px #efefef solid; padding-left: 0.5em;}
+div#settings input { margin-bottom: 0px;}
+
+div#settings.hidden {display:none;}
+
+#showsettings { border: 1px grey solid; padding: 0 0.5em; float:right; line-height: 1.6em; text-align: right; }
+#showsettings:hover { cursor: pointer; }
+
+.invalidsearch { background-color: red; }
+input[type="button"] { background-color: #efefef; border: 1px #2E2E2E solid;}
+
+table { width: 100%; empty-cells: show; border-spacing: 0em 0.2em; margin: 1em 0em; border-style: none; }
+th, td { border: 1px gray solid; border-width: 1px 1px; padding: 0.5em; vertical-align: top; text-align: left; }
+th { background-color: #efefef; }
+td + td, th + th { border-left: none; }
+
+td a { color: navy; text-decoration: none; }
+td a:hover  { text-decoration: underline; }
+
+tr.noshow { display: none;}
+tr.highlight td { background-color: #EFEFEF; border-top: 2px #2E2E2E solid; font-weight: bold; }
+tr.abstract td, tr.review td, tr.bibtex td { background-color: #EFEFEF; text-align: justify; border-bottom: 2px #2E2E2E solid; }
+tr.nextshow td { border-bottom: 1px gray solid; }
+
+tr.bibtex pre { width: 100%; overflow: auto; white-space: pre-wrap;}
+p.infolinks { margin: 0.3em 0em 0em 0em; padding: 0px; }
+
+@media print {
+	p.infolinks, #qs_settings, #quicksearch, t.bibtex { display: none !important; }
+	tr { page-break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+
+<form action="" id="quicksearch">
+<input type="text" id="qs_field" autocomplete="off" placeholder="Type to search..." /> <input type="button" onclick="clearQS()" value="clear" />
+<span id="searchstat">Matching entries: <span id="stat">0</span></span>
+<div id="showsettings" onclick="toggleSettings()">settings...</div>
+<div id="settings" class="hidden">
+<ul>
+<li><input type="checkbox" class="search_setting" id="opt_searchAbs" onchange="updateSetting(this)"><label for="opt_searchAbs"> include abstract</label></li>
+<li><input type="checkbox" class="search_setting" id="opt_searchRev" onchange="updateSetting(this)"><label for="opt_searchRev"> include review</label></li>
+<li><input type="checkbox" class="search_setting" id="opt_useRegExp" onchange="updateSetting(this)"><label for="opt_useRegExp"> use RegExp</label></li>
+<li><input type="checkbox" class="search_setting" id="opt_noAccents" onchange="updateSetting(this)"><label for="opt_noAccents"> ignore accents</label></li>
+</ul>
+</div>
+</form>
+<table id="qs_table" border="1">
+<thead><tr><th width="20%">Author</th><th width="30%">Title</th><th width="5%">Year</th><th width="30%">Journal/Proceedings</th><th width="10%">Reftype</th><th width="5%">DOI/URL</th></tr></thead>
+<tbody><tr id="Abdellatif2019" class="entry">
+	<td>Abdellatif, A., Samara, L., Mohamed, A., Erbad, A., A. Al-Ali and Guizani, M.</td>
+	<td>Compress or Interfere? <p class="infolinks">[<a href="javascript:toggleInfo('Abdellatif2019','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Abdellatif2019','bibtex')">BibTeX</a>]</p></td>
+	<td>2019</td>
+	<td>SECON 2019 workshop on Edge Computing for Cyber Physical Systems - SECON 2019 workshop on Edge Computing for Cyber Physical Systems (CyberEdge 2019), pp. Accepted&nbsp;</td>
+	<td>inproceedings</td>
+	<td>&nbsp;</td>
+</tr>
+<tr id="abs_Abdellatif2019" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Rapid evolution of wireless medical devices and network technologies has fostered the growth of remote monitoring systems. Such new technologies enable monitoring patients' medical records anytime and anywhere without limiting patients' activities. However, critical challenges have emerged with remote monitoring systems due to the enormous amount of generated data that need to be efficiently processed and wirelessly transmitted to the service providers in time. Thus, in this paper, we leverage full-duplex capabilities for fast transmission, while tackling the trade-off between Quality of Service (QoS) requirements and consequent self-interference (SI) for efficient remote monitoring healthcare systems. The proposed framework jointly considers the residual SI resulting from simultaneous transmission and reception along with the compressibility feature of medical data in order to optimize the data transmission over wireless channels, while maintaining the application's QoS constraint. Our simulation results demonstrate the efficiency of the proposed solution in terms of minimizing the transmission power, residual self-interference, and encoding distortion.</td>
+</tr>
+<tr id="bib_Abdellatif2019" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{Abdellatif2019,
+  author = {A. Abdellatif and L. Samara and A. Mohamed and A. Erbad and A. Al-Ali, and M. Guizani},
+  title = {Compress or Interfere?},
+  booktitle = {SECON 2019 workshop on Edge Computing for Cyber Physical Systems - SECON 2019 workshop on Edge Computing for Cyber Physical Systems (CyberEdge 2019)},
+  year = {2019},
+  pages = {Accepted}
+}
+</pre></td>
+</tr>
+<tr id="Abdellatif2019a" class="entry">
+	<td>Abdellatif, A.A., Samara, L., Mohamed, A., Erbad, A., Al-Ali, A. and Guizani, M.</td>
+	<td>Reliability-Secrecy Tradeoff for Implantable Medical Devices <p class="infolinks">[<a href="javascript:toggleInfo('Abdellatif2019a','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Abdellatif2019a','bibtex')">BibTeX</a>]</p></td>
+	<td>2019</td>
+	<td>2019 Wireless Telecommunications Symposium (WTS) - Internet of Things and WSN, pp. Accepted&nbsp;</td>
+	<td>inproceedings</td>
+	<td>&nbsp;</td>
+</tr>
+<tr id="abs_Abdellatif2019a" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Rapid evaluation of cyber physical systems has fostered the development of viable healthcare applications for real-time remote healthcare monitoring. Leveraging wireless and implantable medical devices has enabled the treatment of various diseases through monitoring patients' medical records anytime and everywhere without limiting patients' activities. However, critical challenges have emerged with such systems due to the effect of cyber threats on the physical environment and the enormous amount of generated data that need to be processed, recorded, and wirelessly transmitted to the service providers. Thus, in this paper, we investigate the the tradeoff between security and Quality of Service (QoS) for efficient remote monitoring healthcare systems. The proposed framework has jointly consider the Secrecy Outage Probability (SOP) with adaptive compression scheme in order to optimize the medical data transmission over wireless channels, while maintaining the application layer's QoS constraint. Our simulation results show the excellent performance of the proposed solution in terms of minimizing both the SOP and encoding distortion, with respect to state-of-the-art schemes that focus only on one objective.</td>
+</tr>
+<tr id="bib_Abdellatif2019a" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{Abdellatif2019a,
+  author = {Alaa Awad Abdellatif and Lutfi Samara and Amr Mohamed and Aiman Erbad and Abdulla Al-Ali and Mohsen Guizani},
+  title = {Reliability-Secrecy Tradeoff for Implantable Medical Devices},
+  booktitle = {2019 Wireless Telecommunications Symposium (WTS) - Internet of Things and WSN},
+  year = {2019},
+  pages = {Accepted}
+}
+</pre></td>
+</tr>
+<tr id="Al-Emadi2019" class="entry">
+	<td>Al-Emadi, S., Al-Ali, A., Al-Ali, A. and Mohamed, A.</td>
+	<td>Audio Based Drone Detection and Identification using Deep Learning <p class="infolinks">[<a href="javascript:toggleInfo('Al-Emadi2019','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Al-Emadi2019','bibtex')">BibTeX</a>]</p></td>
+	<td>2019</td>
+	<td>IWCMC 2019 Vehicular Symposium - VehicularComm, Tangiers, Morocco, June 2019., pp. Accepted&nbsp;</td>
+	<td>inproceedings</td>
+	<td>&nbsp;</td>
+</tr>
+<tr id="abs_Al-Emadi2019" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: In recent years, unmanned aerial vehicles (UAVs) have become increasingly accessible to the public due to their high availability with affordable prices while being equipped with better technology. However, this raises a great concern from both the cyber and physical security perspectives since UAVs can be utilized for malicious activities in order to exploit vulnerabilities by spying on private properties, critical areas or to carry dangerous objects such as explosives which makes them a great threat to the society. Drone identification is considered the first step in a multi-procedural process in securing physical infrastructure against this threat. In this paper, we present drone detection and identification methods using deep learning techniques such as Convolutional Neural Network (CNN), Recurrent Neural Network (RNN) and Convolutional Recurrent Neural Network (CRNN). These algorithms will be utilized to exploit the unique acoustic fingerprints of the flying drones in order to detect and identify them. We propose a comparison between the performance of different neural networks based on our dataset which features audio recorded samples of drone activities. The major contribution of our work is to validate the usage of these methodologies of drone detection and identification in real life scenarios and to provide a robust comparison of the performance between different deep neural network algorithms for this application. In addition, we are releasing the dataset of drone audio clips for the research community for further analysis.</td>
+</tr>
+<tr id="bib_Al-Emadi2019" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{Al-Emadi2019,
+  author = {Sara Al-Emadi and Abdulla Al-Ali and Abdulaziz Al-Ali and Amr Mohamed},
+  title = {Audio Based Drone Detection and Identification using Deep Learning},
+  booktitle = {IWCMC 2019 Vehicular Symposium - VehicularComm, Tangiers, Morocco, June 2019.},
+  year = {2019},
+  pages = {Accepted}
+}
+</pre></td>
+</tr>
+<tr id="AlMarridi2019" class="entry">
+	<td>AlMarridi, A., Mohamed, A., Erbad, A., Al-Ali, A. and Guizani, M.</td>
+	<td>Efficient EEG Mobile Edge Computing and Optimal Resource Allocation for Smart Health Applications <p class="infolinks">[<a href="javascript:toggleInfo('AlMarridi2019','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('AlMarridi2019','bibtex')">BibTeX</a>]</p></td>
+	<td>2019</td>
+	<td>Wireless Communications and Mobile Computing 2019: e-Health Symposium - e-Health Symp2019, Tangiers, Morocco, pp. Accepted&nbsp;</td>
+	<td>inproceedings</td>
+	<td>&nbsp;</td>
+</tr>
+<tr id="abs_AlMarridi2019" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: In the past few years, a rapid increase in the number of patients requiring constant monitoring, which inspires researchers to develop intelligent and sustainable remote smart healthcare services. However, the transmission of big real-time health data is a challenge as the current dynamic networks are limited by different aspects such as the bandwidth, end-to-end delay, and transmission energy; will be an obstacle against having an efficient transmission of the data. Due to this, a data reduction technique should be applied to the data before being transmitted based on the resources of the network. In this paper, we integrate efficient data reduction with wireless networking to deliver an adaptive compression with an acceptable distortion, while reacting to the wireless network dynamics such as channel fading and user mobility. Convolutional Auto-encoder (CAE) approach was used to implement an adaptive compression/reconstruction technique with the minimum distortion. Then, a resource allocation framework was implemented to minimize the transmission energy along with the distortion of the reconstructed signal while considering different network and applications constraints such as the available bandwidth, distortion threshold, data rate threshold and the end to end delay. A comparison between the results of the resource allocation framework considering both CAE and Discrete wavelet transforms (DWT) was also captured.</td>
+</tr>
+<tr id="bib_AlMarridi2019" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{AlMarridi2019,
+  author = {A. AlMarridi and A. Mohamed and A. Erbad and A. Al-Ali and M. Guizani},
+  title = {Efficient EEG Mobile Edge Computing and Optimal Resource Allocation for Smart Health Applications},
+  booktitle = {Wireless Communications and Mobile Computing 2019: e-Health Symposium - e-Health Symp2019, Tangiers, Morocco},
+  year = {2019},
+  pages = {Accepted}
+}
+</pre></td>
+</tr>
+<tr id="ElDiwany2019" class="entry">
+	<td>ElDiwany, B., Abdellatif, A., Mohamed, A., Al-Ali, A., Guizani, M. and Du, X.</td>
+	<td>On Physical Layer Security in Energy-Efficient Wireless Health Monitoring Applications <p class="infolinks">[<a href="javascript:toggleInfo('ElDiwany2019','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('ElDiwany2019','bibtex')">BibTeX</a>]</p></td>
+	<td>2019</td>
+	<td>2019 IEEE International Conference on Communications (ICC), pp. Accepted&nbsp;</td>
+	<td>inproceedings</td>
+	<td>&nbsp;</td>
+</tr>
+<tr id="abs_ElDiwany2019" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: In this paper, we investigate a multi-objective optimization framework for secure wireless health monitoring applications. In particular, we consider a legitimate link for the transmission of a vital EEG signal, threatened by a passive eavesdropping attack, that aims at wiretapping these measurements. We incorporate in our framework the practical secrecy metric, namely secrecy outage probability (SOP), which requires only the knowledge of side information regarding the eavesdropper (Ev), instead of completely having its instantaneous channel state information (CSI). To that end, we formulate an optimization problem in the form of maximizing the energy efficiency of the transmitter, while minimizing the distortion encountered at the signal resulting from the compression process prior to transmission, under realistic quality of service (QoS) constraints. The problem is shown to be nonconvex and NPNP-complete. Towards solving the problem, a branch and bound (BnB)-based algorithm is presented where a δδ-suboptimal solution, from the global optimal one, is obtained. Numerical results are conducted to verify the system performance, where it is shown that our proposed approach outperforms similar systems deploying fixed compression policies (FCPs). We successfully meet QoS requirements while optimizing the system objectives, at all channel conditions, which cannot be attained by these FCP approaches. Interestingly, we also show that a target secrecy rate can be practically achieved with nonzero probability, even when the Ev has a better channel condition, on the average, than that for the legitimate receiver.</td>
+</tr>
+<tr id="bib_ElDiwany2019" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{ElDiwany2019,
+  author = {B. ElDiwany and Alaa. Abdellatif and A. Mohamed and A. Al-Ali and M. Guizani and X. Du},
+  title = {On Physical Layer Security in Energy-Efficient Wireless Health Monitoring Applications},
+  booktitle = {2019 IEEE International Conference on Communications (ICC)},
+  year = {2019},
+  pages = {Accepted}
+}
+</pre></td>
+</tr>
+<tr id="" class="entry">
+	<td>Zubair, M., Unal, D., Al-Ali, A. and Shikfa, A.</td>
+	<td>Exploiting Bluetooth Vulnerabilities in e-Health IoT Devices <p class="infolinks">[<a href="javascript:toggleInfo('','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('','bibtex')">BibTeX</a>]</p></td>
+	<td>2019</td>
+	<td>The 3rd International Conference on Future Networks &amp; Distributed Systems, ICFNDS 2019, pp. Accepted&nbsp;</td>
+	<td>inproceedings</td>
+	<td>&nbsp;</td>
+</tr>
+<tr id="abs_" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Internet of Things (IoT) is an interconnected network of heterogeneous things through the Internet. The current and next generation of e-health systems are dependent on IoT devices such as wireless medical sensors. One of the most important applications of IoT devices in the medical field is the usage of these smart devices for emergency healthcare. In the current interconnected world, Bluetooth Technology plays a vital role in communication due to its less resource consumption which suits the IoT architecture and design. However Bluetooth technology does not come without security flaws. In this article, we explore various security threats in Bluetooth communication for e-Health systems and present some examples of the attacks that have been performed on e-Health systems by exploiting the identified vulnerabilities.</td>
+</tr>
+<tr id="bib_" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{,
+  author = {M. Zubair and D. Unal and A. Al-Ali and A. Shikfa},
+  title = {Exploiting Bluetooth Vulnerabilities in e-Health IoT Devices},
+  booktitle = {The 3rd International Conference on Future Networks &amp; Distributed Systems, ICFNDS 2019},
+  year = {2019},
+  pages = {Accepted}
+}
+</pre></td>
+</tr>
+<tr id="Belkhouja_2018" class="entry">
+	<td>Belkhouja, T., Mohamed, A., Al-Ali, A.K., Du, X. and Guizani, M.</td>
+	<td>Salt Generation for Hashing Schemes based on ECG readings for Emergency Access to Implantable Medical Devices <p class="infolinks">[<a href="javascript:toggleInfo('Belkhouja_2018','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Belkhouja_2018','bibtex')">BibTeX</a>]</p></td>
+	<td>2018</td>
+	<td>2018 International Symposium on Networks, Computers and Communications (ISNCC)&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://doi.org/10.1109/ISNCC.2018.8530897">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Belkhouja_2018" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Secure communication in medical devices is a pillar in ensuring patient’s safety. However, in emergency cases, this can hinder the recovery of the patient. If an emergency team cannot give themselves access to the IMD without the user’s assistance, they may be unable to offer any help. This paper introduces a security scheme for similar cases. By creating a backdoor to the IMDs, legal authentication may be performed with the IMD and gain access to it. This work presents a procedure for an emergency team to validate their actions to the IMD without the need of the patient’s conscious. This is ensured using hashing function and elliptic curves for the security key generation. The seed that will be used will be the heart rhythm of the patient. The authentication process introduced will only allow access to the identified parties. An eavesdropper will be unable to interfere during emergency cases and threaten more the patient’s life.</td>
+</tr>
+<tr id="bib_Belkhouja_2018" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{Belkhouja_2018,
+  author = {Taha Belkhouja and Amr Mohamed and Abdulla K. Al-Ali and Xiaojiang Du and Mohsen Guizani},
+  title = {Salt Generation for Hashing Schemes based on ECG readings for Emergency Access to Implantable Medical Devices},
+  booktitle = {2018 International Symposium on Networks, Computers and Communications (ISNCC)},
+  publisher = {IEEE},
+  year = {2018},
+  doi = {https://doi.org/10.1109/ISNCC.2018.8530897}
+}
+</pre></td>
+</tr>
+<tr id="Rathore2018b" class="entry">
+	<td>Rathore, H., Al-Ali, A., Mohamed, A., Du, X. and Guizani, M.</td>
+	<td>DTW based Authentication for Wireless Medical Device Security <p class="infolinks">[<a href="javascript:toggleInfo('Rathore2018b','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Rathore2018b','bibtex')">BibTeX</a>]</p></td>
+	<td>2018</td>
+	<td>2018 14th International Wireless Communications &amp; Mobile Computing Conference (IWCMC), Cyprus&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://doi.org/10.1109/iwcmc.2018.8450419">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Rathore2018b" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Wireless medical devices play an important role in providing safety and privacy to patients suffering from major health issues. These light-weight devices can be worn inside or outside the patient's body and provide more convenience and reliable doctor-patient communication. However, the design, development, and usage of these devices play a critical role in present network paradigm. They are vulnerable to network threats and attacks which break the confidentiality, integrity and availability protocols in networking scenarios. Thus, it is important to have identification and authentication of only the authorized peoplewho can operate the device. This paper proposes Dynamic Time Warping (DTW) algorithm for providing trusted authentication and identification of only authorized people using ECG signal. Here, DTW algorithm is used to measure the correlation between different ECG signal records. Experiments were carried out to evaluate the proposed algorithm with a large database consisting of users of al1 ages, including abnormal ECG data and long span of time intervals between ECG recordings for evaluating the reliability of the proposed algorithm. Comparative evaluation of the proposed sy stem show ed that, it is not only efficient, but also light weight in comparison to the existing systems.</td>
+</tr>
+<tr id="bib_Rathore2018b" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{Rathore2018b,
+  author = {Heena Rathore and Abdulla Al-Ali and Amr Mohamed and Xiaojiang Du and Mohsen Guizani},
+  title = {DTW based Authentication for Wireless Medical Device Security},
+  booktitle = {2018 14th International Wireless Communications &amp; Mobile Computing Conference (IWCMC), Cyprus},
+  publisher = {IEEE},
+  year = {2018},
+  doi = {https://doi.org/10.1109/iwcmc.2018.8450419}
+}
+</pre></td>
+</tr>
+<tr id="Belkhouja2017" class="entry">
+	<td>Belkhouja, T., Mohamed, A., Al-Ali, A.K., Du, X. and Guizani, M.</td>
+	<td>Light-weight encryption of wireless communication for implantable medical devices using henon chaotic system (invited paper) <p class="infolinks">[<a href="javascript:toggleInfo('Belkhouja2017','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Belkhouja2017','bibtex')">BibTeX</a>]</p></td>
+	<td>2017</td>
+	<td>2017 International Conference on Wireless Networks and Mobile Communications (WINCOM)&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://doi.org/10.1109/wincom.2017.8238203">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Belkhouja2017" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Implantable Medical Devices (IMDs) are a growing industry regarding personal health care and monitoring. In addition, they provide patients with efficient treatments. In general, these devices use wireless communication technologies that may require synchronization with the medical team. Even though wireless technology offers satisfaction to the patient's daily life, it is still prone to security threats. Many malicious attacks on these devices can directly affect the patient's health in a lethal way. Using insecure wireless channels for these devices offers adversaries easy ways to steal the patient's private data and hijack these systems. This can cause damage to patients and render their devices unusable. In the aim of protecting these devices, we explore in this paper a new way to create symmetric encryption keys to encrypt the wireless communication held by the IMDs. This key generation will rely on chaotic systems to obtain synchronized Pseudo-Random keys that will be generated separately in the system. This generation is in a way that the communication channel will avoid a wireless key exchange, protecting the patient from key theft. Moreover, we will explore the performance of this generator from a cryptographic point of view, ensuring that these keys are safe to use for communication encryption.</td>
+</tr>
+<tr id="bib_Belkhouja2017" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{Belkhouja2017,
+  author = {Taha Belkhouja and Amr Mohamed and Abdulla K. Al-Ali and Xiaojiang Du and Mohsen Guizani},
+  title = {Light-weight encryption of wireless communication for implantable medical devices using henon chaotic system (invited paper)},
+  booktitle = {2017 International Conference on Wireless Networks and Mobile Communications (WINCOM)},
+  publisher = {IEEE},
+  year = {2017},
+  doi = {https://doi.org/10.1109/wincom.2017.8238203}
+}
+</pre></td>
+</tr>
+<tr id="Belkhouja2017a" class="entry">
+	<td>Belkhouja, T., Du, X., Mohamed, A., Al-Ali, A.K. and Guizani, M.</td>
+	<td>New Plain-Text Authentication Secure Scheme for Implantable Medical Devices with Remote Control <p class="infolinks">[<a href="javascript:toggleInfo('Belkhouja2017a','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Belkhouja2017a','bibtex')">BibTeX</a>]</p></td>
+	<td>2017</td>
+	<td>GLOBECOM 2017 - 2017 IEEE Global Communications Conference&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://doi.org/10.1109/glocom.2017.8255015">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Belkhouja2017a" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Implantable medical devices are being increasingly used to treat or monitor different medical conditions. For such purposes, wireless is the most desired communication scheme to be implemented in these devices. On the other hand, the wireless scheme increases security threats on these electronic devices, and any possibility of attack on the medical device may have lethal consequences. The patients usually have their implantable medical devices configured and monitored by their doctors. But for practical purposes, most of the time they possess a remote control for daily non-critical operations. This remote control can be considered as an open gate for attackers to target those medical devices and cause major harm. Motivated by this, we analyze in this paper the communication scheme implemented in the wireless devices, having as a starting point an Implantable Insulin Pump to develop a new protocol that can be used in the remote control-implantable device communication, and that will rely on plain text messages to avoid encryption implementation. Finally, we will analyze how the novelties introduced with this protocol can secure such a wireless link.</td>
+</tr>
+<tr id="bib_Belkhouja2017a" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{Belkhouja2017a,
+  author = {Taha Belkhouja and Xiaojang Du and Amr Mohamed and Abdulla K. Al-Ali and Mohsen Guizani},
+  title = {New Plain-Text Authentication Secure Scheme for Implantable Medical Devices with Remote Control},
+  booktitle = {GLOBECOM 2017 - 2017 IEEE Global Communications Conference},
+  publisher = {IEEE},
+  year = {2017},
+  doi = {https://doi.org/10.1109/glocom.2017.8255015}
+}
+</pre></td>
+</tr>
+<tr id="Rathore2017" class="entry">
+	<td>Rathore, H., Mohamed, A., Al-Ali, A., Du, X. and Guizani, M.</td>
+	<td>A review of security challenges, attacks and resolutions for wireless medical devices <p class="infolinks">[<a href="javascript:toggleInfo('Rathore2017','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Rathore2017','bibtex')">BibTeX</a>]</p></td>
+	<td>2017</td>
+	<td>2017 13th International Wireless Communications and Mobile Computing Conference (IWCMC)&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://doi.org/10.1109/iwcmc.2017.7986505">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Rathore2017" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Evolution of implantable medical devices for human beings has provided a radical new way for treating chronic diseases such as diabetes, cardiac arrhythmia, cochlear, gastric diseases etc. Implantable medical devices have provided a breakthrough in network transformation by enabling and accessing the technology on demand. However, with the advancement of these devices with respect to wireless communication and ability for outside caregiver to communicate wirelessly have increased its potential to impact the security, and breach in privacy of human beings. There are several vulnerable threats in wireless medical devices such as information harvesting, tracking the patient, impersonation, relaying attacks and denial of service attack. These threats violate confidentiality, integrity, availability properties of these devices. For securing implantable medical devices diverse solutions have been proposed ranging from machine learning techniques to hardware technologies. The present survey paper focusses on the challenges, threats and solutions pertaining to the privacy and safety issues of medical devices.</td>
+</tr>
+<tr id="bib_Rathore2017" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{Rathore2017,
+  author = {Heena Rathore and Amr Mohamed and Abdulla Al-Ali and Xiaojiang Du and Mohsen Guizani},
+  title = {A review of security challenges, attacks and resolutions for wireless medical devices},
+  booktitle = {2017 13th International Wireless Communications and Mobile Computing Conference (IWCMC)},
+  publisher = {IEEE},
+  year = {2017},
+  doi = {https://doi.org/10.1109/iwcmc.2017.7986505}
+}
+</pre></td>
+</tr>
+<tr id="Rathore2017a" class="entry">
+	<td>Rathore, H., Al-Ali, A., Mohamed, A., Du, X. and Guizani, M.</td>
+	<td>DLRT: Deep Learning Approach for Reliable Diabetic Treatment <p class="infolinks">[<a href="javascript:toggleInfo('Rathore2017a','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Rathore2017a','bibtex')">BibTeX</a>]</p></td>
+	<td>2017</td>
+	<td>GLOBECOM 2017 - 2017 IEEE Global Communications Conference&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://doi.org/10.1109/glocom.2017.8255028">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Rathore2017a" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Diabetic therapy or insulin treatment enables patients to control the blood glucose level. Today, instead of physically utilizing syringes for infusing insulin, a patient can utilize a gadget, for example, a Wireless Insulin Pump (WIP) to pass insulin into the body. A typical WIP framework comprises of an insulin pump, continuous glucose management system, blood glucose monitor, and other associated devices with all connected wireless links. This takes into consideration more granular insulin conveyance while achieving blood glucose control. WIP frameworks have progressively benefited patients, yet the multifaceted nature of the subsequent framework has posed in parallel certain security implications. This paper proposes a highly accurate yet efficient deep learning methodology to protect these vulnerable devices against fake glucose dosage. Moreover, the proposal estimates the reliability of the framework through the Bayesian network. We conduct comparative study to conclude that the proposed method outperforms the state of the art by over 15% in accuracy achieving more than 93% accuracy. Also, the proposed approach enhances the reliability of the overall system by 18% when only one wireless link is secured, and more than 90% when all wireless links are secured.</td>
+</tr>
+<tr id="bib_Rathore2017a" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{Rathore2017a,
+  author = {Heena Rathore and Abdulla Al-Ali and Amr Mohamed and Xiaojiang Du and Mohsen Guizani},
+  title = {DLRT: Deep Learning Approach for Reliable Diabetic Treatment},
+  booktitle = {GLOBECOM 2017 - 2017 IEEE Global Communications Conference},
+  publisher = {IEEE},
+  year = {2017},
+  doi = {https://doi.org/10.1109/glocom.2017.8255028}
+}
+</pre></td>
+</tr>
+<tr id="Shabara2017" class="entry">
+	<td>Shabara, Y., Mohamed, A. and Al-Ali, A.K.</td>
+	<td>A Hardware Implementation for Efficient Spectrum Access in Cognitive Radio Networks <p class="infolinks">[<a href="javascript:toggleInfo('Shabara2017','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Shabara2017','bibtex')">BibTeX</a>]</p></td>
+	<td>2017</td>
+	<td>2017 IEEE Wireless Communications and Networking Conference (WCNC)&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://doi.org/10.1109/wcnc.2017.7925442">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Shabara2017" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Opportunistic spectrum access is a propitious technique to overcome the under-utilization of spectrum bands. In this work, we design an experimental test-bed for evaluating an un-slotted spectrum access scheme under real indoor environment conditions. To this end, we use the USRP software defined radio platform along with the GNURadio software that incorporates the PHY and MAC functions and modules. Our contribution is multi-fold. First, we design a MAC protocol to integrate the packet based transmission of the coexisting PU/SU network, while compensating for spectrum sensing imperfection as well as collision detection faults. Second, we evaluate the USRP-induced latency (delay) and show that it has random behavior. We work around it to obtain a fixed packet transmission time which is crucial for the channel access scheme realization and evaluation. Third, we perform helping experiments to quantify the spectrum sensing imperfection in terms of false alarm and detection probabilities. We also quantify the imperfection in collision detection. Finally, we evaluate the performance of the whole channel access scheme and compare its results to the classical sense-transmit scheme. We show that 28.5% increase in SU throughput can be achieved for the same PU packet collision rate.</td>
+</tr>
+<tr id="bib_Shabara2017" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{Shabara2017,
+  author = {Yahia Shabara and Amr Mohamed and Abdulla K. Al-Ali},
+  title = {A Hardware Implementation for Efficient Spectrum Access in Cognitive Radio Networks},
+  booktitle = {2017 IEEE Wireless Communications and Networking Conference (WCNC)},
+  publisher = {IEEE},
+  year = {2017},
+  doi = {https://doi.org/10.1109/wcnc.2017.7925442}
+}
+</pre></td>
+</tr>
+<tr id="Hassan2016" class="entry">
+	<td>Hassan, H.K., Mohamed, A. and Alali, A.</td>
+	<td>DSA-Based Energy Efficient Cellular Networks: Integration with the Smart Grid <p class="infolinks">[<a href="javascript:toggleInfo('Hassan2016','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Hassan2016','bibtex')">BibTeX</a>]</p></td>
+	<td>2016</td>
+	<td>2016 IEEE 84th Vehicular Technology Conference (VTC-Fall)&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://doi.org/10.1109/vtcfall.2016.7880969">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Hassan2016" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Smart Grid (SG)-aware cellular networks are expected to decrease their energy consumption and consequently decrease the global carbon emissions. At the same time, cellular operators are required to meet the end-user requirements in terms of throughput. In this paper we propose a novel strategy to pave the way for the cellular operators to integrate with the SG. Our strategy is based on Dynamic Spectrum Assignment (DSA) approach. We formulate the trade-off situation of the operators as a reward function. The objective is to maximize the reward while decreasing the energy consumption. We study homogeneous, spatial-heterogeneous and spatio-temporal heterogeneous types of traffic. We study the performance of the proposed strategy in a dynamic electricity pricing context. We show that by adapting the spectrum utilization properly, the cellular operator can achieve higher rewards while using less energy compared to an operator deploying classical reuse, for low and intermediate traffic loads. We show also that the proposed DSA-based strategy is capable of adapting to the system dynamics; electricity pricing as well as end-users traffic.</td>
+</tr>
+<tr id="bib_Hassan2016" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{Hassan2016,
+  author = {Hany Kamal Hassan and Amr Mohamed and Abdulla Alali},
+  title = {DSA-Based Energy Efficient Cellular Networks: Integration with the Smart Grid},
+  booktitle = {2016 IEEE 84th Vehicular Technology Conference (VTC-Fall)},
+  publisher = {IEEE},
+  year = {2016},
+  doi = {https://doi.org/10.1109/vtcfall.2016.7880969}
+}
+</pre></td>
+</tr>
+<tr id="Salama2016" class="entry">
+	<td>Salama, A.M., Alali, A. and Mohamed, A.</td>
+	<td>An evolutionary game theoretic approach for cooperative spectrum sensing <p class="infolinks">[<a href="javascript:toggleInfo('Salama2016','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Salama2016','bibtex')">BibTeX</a>]</p></td>
+	<td>2016</td>
+	<td>2016 IEEE Wireless Communications and Networking Conference&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://doi.org/10.1109/wcnc.2016.7564914">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Salama2016" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Many spectrum sensing techniques have been proposed to allow a secondary user (SU) to utilize a primary user's (PU) spectrum through opportunistic access. However, few of them have considered the tradeoff between accuracy and energy consumption by taking into account the selfishness of the (SUs) in a distributed network. In this work, we consider spectrum sensing as a game where the payoff is the throughput of each SU/player. Each SU chooses between two actions, parallel individual sensing and sequential cooperative sensing techniques. Using those techniques, each SU will distributively decide the existence of the PU. Due to the repetitive nature of our game, we model it using evolutionary game (EG) theory which provides a suitable model that describes the behavioral evolution of the actions taken by the SUs. We address our problem in two cases, when the players are homogeneous and heterogeneous respectively. For the sake of stability, we find the equilibria that lead to evolutionary stable strategies (ESS) by proving that our system is evolutionary asymptotically stable, in both cases, under certain conditions on the sensing time and the false alarm probability.</td>
+</tr>
+<tr id="bib_Salama2016" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{Salama2016,
+  author = {Ahmed M. Salama and Abdulla Alali and Amr Mohamed},
+  title = {An evolutionary game theoretic approach for cooperative spectrum sensing},
+  booktitle = {2016 IEEE Wireless Communications and Networking Conference},
+  publisher = {IEEE},
+  year = {2016},
+  doi = {https://doi.org/10.1109/wcnc.2016.7564914}
+}
+</pre></td>
+</tr>
+<tr id="Al-Ali2014" class="entry">
+	<td>Al-Ali, A., Chowdhury, K., Felice, M.D. and Paavola, J.</td>
+	<td>Querying spectrum databases and improved sensing for vehicular cognitive radio networks <p class="infolinks">[<a href="javascript:toggleInfo('Al-Ali2014','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Al-Ali2014','bibtex')">BibTeX</a>]</p></td>
+	<td>2014</td>
+	<td>2014 IEEE International Conference on Communications (ICC)&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://doi.org/10.1109/icc.2014.6883514">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Al-Ali2014" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Cognitive radio (CR) vehicular networks are poised to opportunistically use the licensed spectrum for high bandwidth inter-vehicular messaging, driver-assist functions, and passenger entertainment services. Recent rulings that mandate the use of spectrum databases introduce additional challenges in this highly mobile environment, where the CR enabled vehicles must update their spectrum data frequently and complete the data transfers with roadside base stations. As the rules allow local spectrum sensing only under the assurance of high accuracy, there is an associated tradeoff in obtaining assuredly correct spectrum updates from the database at a finite cost, compared to locally obtained sensing results that may have a finite error probability. This paper aims to answer the question of when to undertake local spectrum sensing and when to rely on database updates through a novel method of exploiting the correlation between 2G spectrum bands and TV whitespace. We describe experimental studies that validate our approach and quantify the cost savings made possible by intermittent database queries.</td>
+</tr>
+<tr id="bib_Al-Ali2014" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{Al-Ali2014,
+  author = {Abdulla Al-Ali and Kaushik Chowdhury and Marco Di Felice and Jarkko Paavola},
+  title = {Querying spectrum databases and improved sensing for vehicular cognitive radio networks},
+  booktitle = {2014 IEEE International Conference on Communications (ICC)},
+  publisher = {IEEE},
+  year = {2014},
+  doi = {https://doi.org/10.1109/icc.2014.6883514}
+}
+</pre></td>
+</tr>
+<tr id="Al-Ali2014a" class="entry">
+	<td>Al-Ali, A. and Chowdhury, K.</td>
+	<td>Simulating dynamic spectrum access using ns-3 for wireless networks in smart environments <p class="infolinks">[<a href="javascript:toggleInfo('Al-Ali2014a','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Al-Ali2014a','bibtex')">BibTeX</a>]</p></td>
+	<td>2014</td>
+	<td>2014 Eleventh Annual IEEE International Conference on Sensing, Communication, and Networking Workshops (SECON Workshops)&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://doi.org/10.1109/seconw.2014.6979701">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Al-Ali2014a" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Sudden spectrum demands may occur in dense and congested cities, which stress the communication infrastructure. At these times, identifying alternate spectrum bands through cognitive radio (CR) technology will allow users to maintain connectivity and relieve data congestion in the unlicensed bands. However, deployment of the CR networks must be preceded by accurate simulation of these networks, given the high infrastructure costs involved in their installation. Moreover, CR protocols are often cross-layered, which cannot be trivially implemented in off-the-shelf hardware. This paper proposes a framework for the network simulator 3 (ns-3) that is suitable for large networks. Our approach introduces several CR capabilities, such as spectrum sensing, primary user detection, and spectrum hand-off. Our simulator demonstrates improvements in execution time and memory usage, when compared to the earlier versions implemented for the ns-2 environment. This paper is accompanied by the release of the full source code for further research and improvement.</td>
+</tr>
+<tr id="bib_Al-Ali2014a" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{Al-Ali2014a,
+  author = {Abdulla Al-Ali and Kaushik Chowdhury},
+  title = {Simulating dynamic spectrum access using ns-3 for wireless networks in smart environments},
+  booktitle = {2014 Eleventh Annual IEEE International Conference on Sensing, Communication, and Networking Workshops (SECON Workshops)},
+  publisher = {IEEE},
+  year = {2014},
+  doi = {https://doi.org/10.1109/seconw.2014.6979701}
+}
+</pre></td>
+</tr>
+<tr id="Al-Ali2013" class="entry">
+	<td>Al-Ali, A.K. and Chowdhury, K.</td>
+	<td>TFRC-CR: An equation-based transport protocol for cognitive radio networks <p class="infolinks">[<a href="javascript:toggleInfo('Al-Ali2013','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Al-Ali2013','bibtex')">BibTeX</a>]</p></td>
+	<td>2013</td>
+	<td>2013 International Conference on Computing, Networking and Communications (ICNC), pp. 143-148&nbsp;</td>
+	<td>inproceedings</td>
+	<td><a href="https://doi.org/10.1109/iccnc.2013.6504070">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Al-Ali2013" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Data delivery in a dynamically changing spectrum environment continues to remain an unsolved problem, with existing TCP based implementations falling short owing to their inability to react swiftly to spectrum changes. This paper proposes the first equation-based transport protocol, based on the TCP Friendly Rate Control (TFRC) protocol, which uses the recent FCC mandated spectrum database information instead of relying on any intermediate node feedback. Not only does this approach maintain the strict end to end property required at this layer of the protocol stack, but also allows fine adjustment of the transmission rate through continuous adaptation. We explore interesting directions on how to limit repeated queries to the spectrum database and yet allow the source to control the rate effectively; when to re-start the transmissions; and how to interpret possible spectrum changes in the intermediate nodes correctly without mistaking it for normal network congestion, among others. Our extension to the ns-2 simulator enables thorough testing of various aspects of our protocol adapted for cognitive radio, called as TFRC-CR. We show through simulation an improvement of over 33% in the end to end throughput when compared with the classical TFRC.</td>
+</tr>
+<tr id="bib_Al-Ali2013" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@inproceedings{Al-Ali2013,
+  author = {Abdulla K. Al-Ali and K. Chowdhury},
+  title = {TFRC-CR: An equation-based transport protocol for cognitive radio networks},
+  booktitle = {2013 International Conference on Computing, Networking and Communications (ICNC)},
+  publisher = {IEEE},
+  year = {2013},
+  pages = {143--148},
+  doi = {https://doi.org/10.1109/iccnc.2013.6504070}
+}
+</pre></td>
+</tr>
+<tr id="Zhou2015" class="entry">
+	<td>Zhou, F., Ali, A.A. and Chowdhury, K.</td>
+	<td>Investigation of TCP Protocols in Dynamically Varying Bandwidth Conditions <p class="infolinks">[<a href="javascript:toggleInfo('Zhou2015','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Zhou2015','bibtex')">BibTeX</a>]</p></td>
+	<td>2015</td>
+	<td>Lecture Notes of the Institute for Computer Sciences, Social Informatics and Telecommunications Engineering, pp. 176-186&nbsp;</td>
+	<td>incollection</td>
+	<td><a href="https://doi.org/10.1007/978-3-319-24540-9_14">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Zhou2015" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Cognitive radio (CR) networks experience fluctuating spectrum availability that impacts the end to end bandwidth of a connection. In this paper, we conduct an extensive simulation study of three different window-based TCP flavors- NewReno, Westwood+, and Compound, each of which has unique methods to determine the available bandwidth and scale the congestion window appropriately. These protocols also differ in their respective sensitivities to the metrics of round trip time, loss rate, residual buffer space, among others. These metrics exhibit divergent behavior in CR networks, as compared to classical wireless networks, owing to the frequent channel switching and spectrum sensing functions, and this influences the choice of the TCP protocol. Our ns-3 based simulation study reveals which specific rate control mechanism in these various TCP protocols are best suited for quickly adapting to varying spectrum and bandwidth conditions, and ensuring the maximum possible throughput for the connection.</td>
+</tr>
+<tr id="bib_Zhou2015" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@incollection{Zhou2015,
+  author = {Fan Zhou and Abdulla Al Ali and Kaushik Chowdhury},
+  title = {Investigation of TCP Protocols in Dynamically Varying Bandwidth Conditions},
+  booktitle = {Lecture Notes of the Institute for Computer Sciences, Social Informatics and Telecommunications Engineering},
+  publisher = {Springer International Publishing},
+  year = {2015},
+  pages = {176--186},
+  doi = {https://doi.org/10.1007/978-3-319-24540-9_14}
+}
+</pre></td>
+</tr>
+<tr id="Al-Sad2019" class="entry">
+	<td>Al-Sa'd, M.F., Al-Ali, A., Mohamed, A., Khattab, T. and Erbad, A.</td>
+	<td>RF-based drone detection and identification using deep learning approaches: An initiative towards a large open source drone database <p class="infolinks">[<a href="javascript:toggleInfo('Al-Sad2019','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Al-Sad2019','bibtex')">BibTeX</a>]</p></td>
+	<td>2019</td>
+	<td>Future Generation Computer Systems<br/>Vol. 100, pp. 86-97&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1016/j.future.2019.05.007">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Al-Sad2019" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: The omnipresence of unmanned aerial vehicles, or drones, among civilians can lead to technical, security, and public safety issues that need to be addressed, regulated and prevented. Security agencies are in continuous search for technologies and intelligent systems that are capable of detecting drones. Unfortunately, breakthroughs in relevant technologies are hindered by the lack of open source databases for drone’s Radio Frequency (RF) signals, which are remotely sensed and stored to enable developing the most effective way for detecting and identifying these drones. This paper presents a stepping stone initiative towards the goal of building a database for the RF signals of various drones under different flight modes. We systematically collect, analyze, and record raw RF signals of different drones under different flight modes such as: off, on and connected, hovering, flying, and video recording. In addition, we design intelligent algorithms to detect and identify intruding drones using the developed RF database. Three deep neural networks (DNN) are used to detect the presence of a drone, the presence of a drone and its type, and lastly, the presence of a drone, its type, and flight mode. Performance of each DNN is validated through a 10-fold cross-validation process and evaluated using various metrics. Classification results show a general decline in performance when increasing the number of classes. Averaged accuracy has decreased from 99.7% for the first DNN (2-classes), to 84.5% for the second DNN (4-classes), and lastly, to 46.8% for the third DNN (10-classes). Nevertheless, results of the designed methods confirm the feasibility of the developed drone RF database to be used for detection and identification. The developed drone RF database along with our implementations are made publicly available for students and researchers alike.</td>
+</tr>
+<tr id="bib_Al-Sad2019" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Al-Sad2019,
+  author = {Mohammad F. Al-Sa'd and Abdulla Al-Ali and Amr Mohamed and Tamer Khattab and Aiman Erbad},
+  title = {RF-based drone detection and identification using deep learning approaches: An initiative towards a large open source drone database},
+  journal = {Future Generation Computer Systems},
+  publisher = {Elsevier},
+  year = {2019},
+  volume = {100},
+  pages = {86--97},
+  doi = {https://doi.org/10.1016/j.future.2019.05.007}
+}
+</pre></td>
+</tr>
+<tr id="Belkhouja2019" class="entry">
+	<td>Belkhouja, T., Du, X., Mohamed, A., Al-Ali, A.K. and Guizani, M.</td>
+	<td>Biometric-based authentication scheme for Implantable Medical Devices during emergency situations <p class="infolinks">[<a href="javascript:toggleInfo('Belkhouja2019','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Belkhouja2019','bibtex')">BibTeX</a>]</p></td>
+	<td>2019</td>
+	<td>Future Generation Computer Systems<br/>Vol. 98, pp. 109-119&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1016/j.future.2019.02.002">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Belkhouja2019" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Biometric recognition and analysis are among the most trusted features to be used by Implantable Medical Devices (IMDs). We aim to secure these devices by using these features in emergency scenarios. As patients can witness unpredictable lethal accidents, any implantable medical device should allow access to urgent medical interventions from legitimate parties. Any delay in providing immediate medical support can endanger the patient’s life. Hence, we propose in this work an authentication scheme that allows access to the implanted devices in emergency situations for only legitimate users. We have designed in the first place a scheme for authentication using Electrocardiogram instantaneous readings. Then, we joined the latter to a fixed biometric reading, which is fingerprint reading, to enable access to emergency medical teams. We have designed a scheme in a way to prevent attackers from accessing/hijacking the device even during emergency situations. This scheme has been assisted with elliptic curve cryptography to protect the wireless exchange of requested keys. The scheme relies on the instantaneous reading of the patient’s heartbeat and his/her fingerprint reading to create a secure key. This key will validate the authentication request of the new medical team. We have analyzed this scheme deeply to verify that they offer the necessary security for the patient’s life. We have tested if the wireless exchange of the key will expose the device’s privacy. We have also tested the accuracy of the authentication process to ensure a safe and a valid performance of the authentication process. The scheme has been designed with consideration to any hardware/software limitation that characterize any implantable medical device.</td>
+</tr>
+<tr id="bib_Belkhouja2019" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Belkhouja2019,
+  author = {Taha Belkhouja and Xiaojiang Du and Amr Mohamed and Abdulla K. Al-Ali and Mohsen Guizani},
+  title = {Biometric-based authentication scheme for Implantable Medical Devices during emergency situations},
+  journal = {Future Generation Computer Systems},
+  publisher = {Elsevier BV},
+  year = {2019},
+  volume = {98},
+  pages = {109--119},
+  doi = {https://doi.org/10.1016/j.future.2019.02.002}
+}
+</pre></td>
+</tr>
+<tr id="Rathore2019" class="entry">
+	<td>Rathore, H., Al-Ali, A.K., Mohamed, A., Du, X. and Guizani, M.</td>
+	<td>A Novel Deep Learning Strategy for Classifying Different Attack Patterns for Deep Brain Implants <p class="infolinks">[<a href="javascript:toggleInfo('Rathore2019','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Rathore2019','bibtex')">BibTeX</a>]</p></td>
+	<td>2019</td>
+	<td>IEEE Access<br/>Vol. 7, pp. 24154-24164&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1109/access.2019.2899558">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Rathore2019" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Deep brain stimulators (DBSs), a widely used and comprehensively acknowledged restorative methodology, are a type of implantable medical device which uses electrical stimulation to treat neurological disorders. These devices are widely used to treat diseases such as Parkinson, movement disorder, epilepsy, and psychiatric disorders. Security in such devices plays a vital role since it can directly affect the mental, emotional, and physical state of human bodies. In worst-case situations, it can even lead to the patient's death. An adversary in such devices, for instance, can inhibit the normal functionality of the brain by introducing fake stimulation inside the human brain. Nonetheless, the adversary can impair the motor functions, alter impulse control, induce pain, or even modify the emotional pattern of the patient by giving fake stimulations through DBSs. This paper presents a deep learning methodology to predict different attack stimulations in DBSs. The proposed work uses long short-term memory, a type of recurrent network for forecasting and predicting rest tremor velocity. (A type of characteristic observed to evaluate the intensity of the neurological diseases) The prediction helps in diagnosing fake versus genuine stimulations. The effect of deep brain stimulation was tested on Parkinson tremor patients. The proposed methodology was able to detect different types of emulated attack patterns efficiently and thereby notifying the patient about the possible attack.</td>
+</tr>
+<tr id="bib_Rathore2019" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Rathore2019,
+  author = {Heena Rathore and Abdulla Khalid Al-Ali and Amr Mohamed and Xiaojiang Du and Mohsen Guizani},
+  title = {A Novel Deep Learning Strategy for Classifying Different Attack Patterns for Deep Brain Implants},
+  journal = {IEEE Access},
+  publisher = {Institute of Electrical and Electronics Engineers (IEEE)},
+  year = {2019},
+  volume = {7},
+  pages = {24154--24164},
+  doi = {https://doi.org/10.1109/access.2019.2899558}
+}
+</pre></td>
+</tr>
+<tr id="Belkhouja2018" class="entry">
+	<td>Belkhouja, T., Du, X., Mohamed, A., Al-Ali, A. and Guizani, M.</td>
+	<td>Symmetric Encryption Relying on Chaotic Henon System for Secure Hardware-Friendly Wireless Communication of Implantable Medical Systems <p class="infolinks">[<a href="javascript:toggleInfo('Belkhouja2018','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Belkhouja2018','bibtex')">BibTeX</a>]</p></td>
+	<td>2018</td>
+	<td>Journal of Sensor and Actuator Networks<br/>Vol. 7(2), pp. 21&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.3390/jsan7020021">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Belkhouja2018" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Healthcare remote devices are recognized as a promising technology for treating health related issues. Among them are the wireless Implantable Medical Devices (IMDs): These electronic devices are manufactured to treat, monitor, support or replace defected vital organs while being implanted in the human body. Thus, they play a critical role in healing and even saving lives. Current IMDs research trends concentrate on their medical reliability. However, deploying wireless technology in such applications without considering security measures may offer adversaries an easy way to compromise them. With the aim to secure these devices, we explore a new scheme that creates symmetric encryption keys to encrypt the wireless communication portion. We will rely on chaotic systems to obtain a synchronized Pseudo-Random key. The latter will be generated separately in the system in such a way that avoids a wireless key exchange, thus protecting patients from the key theft. Once the key is defined, a simple encryption system that we propose in this paper will be used. We analyze the performance of this system from a cryptographic point of view to ensure that it offers a better safety and protection for patients.</td>
+</tr>
+<tr id="bib_Belkhouja2018" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Belkhouja2018,
+  author = {Taha Belkhouja and Xiaojiang Du and Amr Mohamed and Abdulla Al-Ali and Mohsen Guizani},
+  title = {Symmetric Encryption Relying on Chaotic Henon System for Secure Hardware-Friendly Wireless Communication of Implantable Medical Systems},
+  journal = {Journal of Sensor and Actuator Networks},
+  publisher = {MDPI AG},
+  year = {2018},
+  volume = {7},
+  number = {2},
+  pages = {21},
+  doi = {https://doi.org/10.3390/jsan7020021}
+}
+</pre></td>
+</tr>
+<tr id="Elgendi2018" class="entry">
+	<td>Elgendi, M., Al-Ali, A., Mohamed, A. and Ward, R.</td>
+	<td>Improving Remote Health Monitoring: A Low-Complexity ECG Compression Approach <p class="infolinks">[<a href="javascript:toggleInfo('Elgendi2018','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Elgendi2018','bibtex')">BibTeX</a>]</p></td>
+	<td>2018</td>
+	<td>Diagnostics<br/>Vol. 8(1), pp. 10&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.3390/diagnostics8010010">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Elgendi2018" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Recent advances in mobile technology have created a shift towards using battery-driven devices in remote monitoring settings and smart homes. Clinicians are carrying out diagnostic and screening procedures based on the electrocardiogram (ECG) signals collected remotely for outpatients who need continuous monitoring. High-speed transmission and analysis of large recorded ECG signals are essential, especially with the increased use of battery-powered devices. Exploring low-power alternative compression methodologies that have high efficiency and that enable ECG signal collection, transmission, and analysis in a smart home or remote location is required. Compression algorithms based on adaptive linear predictors and decimation by a factor B/K are evaluated based on compression ratio (CR), percentage root-mean-square difference (PRD), and heartbeat detection accuracy of the reconstructed ECG signal. With two databases (153 subjects), the new algorithm demonstrates the highest compression performance ( CR=6 and PRD=1.88 ) and overall detection accuracy (99.90% sensitivity, 99.56% positive predictivity) over both databases. The proposed algorithm presents an advantage for the real-time transmission of ECG signals using a faster and more efficient method, which meets the growing demand for more efficient remote health monitoring.</td>
+</tr>
+<tr id="bib_Elgendi2018" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Elgendi2018,
+  author = {Mohamed Elgendi and Abdulla Al-Ali and Amr Mohamed and Rabab Ward},
+  title = {Improving Remote Health Monitoring: A Low-Complexity ECG Compression Approach},
+  journal = {Diagnostics},
+  publisher = {MDPI AG},
+  year = {2018},
+  volume = {8},
+  number = {1},
+  pages = {10},
+  doi = {https://doi.org/10.3390/diagnostics8010010}
+}
+</pre></td>
+</tr>
+<tr id="Fahim2018" class="entry">
+	<td>Fahim, A., Elbatt, T., Mohamed, A. and Al-Ali, A.</td>
+	<td>Towards Extended Bit Tracking for Scalable and Robust RFID Tag Identification Systems <p class="infolinks">[<a href="javascript:toggleInfo('Fahim2018','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Fahim2018','bibtex')">BibTeX</a>]</p></td>
+	<td>2018</td>
+	<td>IEEE Access<br/>Vol. 6, pp. 27190-27204&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1109/access.2018.2832119">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Fahim2018" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: The surge in demand for Internet of Things (IoT) systems and applications has motivated a paradigm shift in the development of viable radio frequency identification technology (RFID)-based solutions for ubiquitous real-time monitoring and tracking. Bit tracking-based anti-collision algorithms have attracted considerable attention, recently, due to its positive impact on decreasing the identification time. We aim to extend bit tracking to work effectively over erroneous channels and scalable multi RFID readers systems. Towards this objective, we extend the bit tracking technique along two dimensions. First, we introduce and evaluate a type of bit errors that appears only in bit tracking-based anti-collision algorithms called false collided bit error in single reader RFID systems. A false collided bit error occurs when a reader perceives a bit sent by tag as an erroneous bit due to channel imperfection and not because of a physical collision. This phenomenon results in a significant increase in the identification delay. We introduce a novel, zero overhead algorithm called false collided bit error selective recovery tackling the error. There is a repetition gain in bit tracking-based anti-collision algorithms due to their nature, which can be utilized to detect and correct false collided bit errors without adding extra coding bits. Second, we extend bit tracking to “error-free”scalable mutli-reader systems, while leaving the study of multi-readers tag identification over imperfect channels for future work. We propose the multi-reader RFID tag identification using bit tracking (MRTI-BT) algorithm which allows concurrent tag identification, by neighboring RFID readers, as opposed to time-consuming scheduling. MRTI-BT identifies tags exclusive to different RFIDs, concurrently. The concept of bit tracking and the proposed parallel identification property are leveraged to reduce the identification time compared to the state-of-the-art.</td>
+</tr>
+<tr id="bib_Fahim2018" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Fahim2018,
+  author = {Abdulrahman Fahim and Tamer Elbatt and Amr Mohamed and Abdulla Al-Ali},
+  title = {Towards Extended Bit Tracking for Scalable and Robust RFID Tag Identification Systems},
+  journal = {IEEE Access},
+  publisher = {Institute of Electrical and Electronics Engineers (IEEE)},
+  year = {2018},
+  volume = {6},
+  pages = {27190--27204},
+  doi = {https://doi.org/10.1109/access.2018.2832119}
+}
+</pre></td>
+</tr>
+<tr id="Rathore2018" class="entry">
+	<td>Rathore, H., Fu, C., Mohamed, A., Al-Ali, A., Du, X., Guizani, M. and Yu, Z.</td>
+	<td>Multi-layer security scheme for implantable medical devices <p class="infolinks">[<a href="javascript:toggleInfo('Rathore2018','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Rathore2018','bibtex')">BibTeX</a>]</p></td>
+	<td>2018</td>
+	<td>Neural Computing and Applications&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1007/s00521-018-3819-0">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Rathore2018" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Internet of Medical Things (IoMTs) is fast emerging, thereby fostering rapid advances in the areas of sensing, actuation and connectivity to significantly improve the quality and accessibility of health care for everyone. Implantable medical device (IMD) is an example of such an IoMT-enabled device. IMDs treat the patient’s health and give a mechanism to provide regular remote monitoring to the healthcare providers. However, the current wireless communication channels can curb the security and privacy of these devices by allowing an attacker to interfere with both the data and communication. The privacy and security breaches in IMDs have thereby alarmed both the health providers and government agencies. Ensuring security of these small devices is a vital task to prevent severe health consequences to the bearer. The attacks can range from system to infrastructure levels where both the software and hardware of the IMD are compromised. In the recent years, biometric and cryptographic approaches to authentication, machine learning approaches to anomaly detection and external wearable devices for wireless communication protection have been proposed. However, the existing solutions for wireless medical devices are either heavy for memory constrained devices or require additional devices to be worn. To treat the present situation, there is a requirement to facilitate effective and secure data communication by introducing policies that will incentivize the development of security techniques. This paper proposes a novel electrocardiogram authentication scheme which uses Legendre approximation coupled with multi-layer perceptron model for providing three levels of security for data, network and application levels. The proposed model can reach up to 99.99% testing accuracy in identifying the authorized personnel even with 5 coefficients.</td>
+</tr>
+<tr id="bib_Rathore2018" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Rathore2018,
+  author = {Heena Rathore and Chenglong Fu and Amr Mohamed and Abdulla Al-Ali and Xiaojiang Du and Mohsen Guizani and Zhengtao Yu},
+  title = {Multi-layer security scheme for implantable medical devices},
+  journal = {Neural Computing and Applications},
+  publisher = {Springer Nature},
+  year = {2018},
+  doi = {https://doi.org/10.1007/s00521-018-3819-0}
+}
+</pre></td>
+</tr>
+<tr id="Rathore2018a" class="entry">
+	<td>Rathore, H., Wenzel, L., Al-Ali, A.K., Mohamed, A., Du, X. and Guizani, M.</td>
+	<td>Multi-Layer Perceptron Model on Chip for Secure Diabetic Treatment <p class="infolinks">[<a href="javascript:toggleInfo('Rathore2018a','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Rathore2018a','bibtex')">BibTeX</a>]</p></td>
+	<td>2018</td>
+	<td>IEEE Access<br/>Vol. 6, pp. 44718-44730&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1109/access.2018.2854822">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Rathore2018a" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Diabetic patients use therapy from the insulin pump, a type of implantable medical device, for the infusion of insulin to control blood glucose level. While these devices offer many clinical benefits, there has been a recent increase in the number of cases, wherein, the wireless communication channel of such devices has been compromised. This not only causes the device to malfunction but also potentially threatens the patient’s life. In this paper, a neural networks-based multi-layer perceptron model was designed for real-time medical device security. Machine learning algorithms are among the most effective and broadly utilized systems for classification, identification, and segmentation. Although they are effective, they are both computationally and memory intensive, making them hard to be deployed on low-power embedded frameworks. In this paper, we present an on-chip neural system network for securing diabetic treatment. The model achieved 98.1% accuracy in classifying fake versus genuine glucose measurements. The proposed model was comparatively evaluated with a linear support vector machine which achieved only 90.17% accuracy with negligible precision and recall. Moreover, the proposal estimates the reliability of the framework through the use of the Bayesian network. The proposed approach enhances the reliability of the overall framework by 18% when only one device is secured, and over 90% when all devices are secured.</td>
+</tr>
+<tr id="bib_Rathore2018a" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Rathore2018a,
+  author = {Heena Rathore and Lothar Wenzel and Abdulla Khalid Al-Ali and Amr Mohamed and Xiaojiang Du and Mohsen Guizani},
+  title = {Multi-Layer Perceptron Model on Chip for Secure Diabetic Treatment},
+  journal = {IEEE Access},
+  publisher = {Institute of Electrical and Electronics Engineers (IEEE)},
+  year = {2018},
+  volume = {6},
+  pages = {44718--44730},
+  doi = {https://doi.org/10.1109/access.2018.2854822}
+}
+</pre></td>
+</tr>
+<tr id="Al-Ali2015" class="entry">
+	<td>Al-Ali, A.K., Sun, Y., Felice, M.D., Paavola, J. and Chowdhury, K.R.</td>
+	<td>Accessing Spectrum Databases Using Interference Alignment in Vehicular Cognitive Radio Networks <p class="infolinks">[<a href="javascript:toggleInfo('Al-Ali2015','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Al-Ali2015','bibtex')">BibTeX</a>]</p></td>
+	<td>2015</td>
+	<td>IEEE Transactions on Vehicular Technology<br/>Vol. 64(1), pp. 263-272&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1109/tvt.2014.2318837">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Al-Ali2015" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Cognitive radio (CR) vehicular networks are poised to opportunistically use the licensed spectrum for high-bandwidth intervehicular messaging, driver-assist functions, and passenger entertainment services. Recent rulings that mandate the use of spectrum databases have introduced additional challenges in this highly mobile environment, where the CR-enabled vehicles must update their spectrum data frequently and complete the data transfers with roadside base stations (BSs) in very short interaction times. This paper aims to answer two fundamental questions: 1) when to undertake local spectrum sensing, as opposed to accessing spectrum database information at a finite cost overhead; and 2) how to ensure correct packet receptions among the multiple BSs and CR vehicles using fewer slots than the messages that need to be transmitted. The contributions of this paper are twofold: First, we introduce a method of qualifying the correctness of spectrum sensing results using out-of-band 2G spectrum data using experimental results. Second, to the best of our knowledge, this is the first work on applying the concept of interference alignment (IA) in a practical network setting, leading to dramatic reduction in message transmission times. Our approach demonstrates significant reductions in the overhead of direct database queries and improvement in the accuracy of spectrum sensing for mobile vehicles.</td>
+</tr>
+<tr id="bib_Al-Ali2015" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Al-Ali2015,
+  author = {Abdulla K. Al-Ali and Yifan Sun and Marco Di Felice and Jarkko Paavola and Kaushik R. Chowdhury},
+  title = {Accessing Spectrum Databases Using Interference Alignment in Vehicular Cognitive Radio Networks},
+  journal = {IEEE Transactions on Vehicular Technology},
+  publisher = {Institute of Electrical and Electronics Engineers (IEEE)},
+  year = {2015},
+  volume = {64},
+  number = {1},
+  pages = {263--272},
+  doi = {https://doi.org/10.1109/tvt.2014.2318837}
+}
+</pre></td>
+</tr>
+<tr id="Al-Ali2013a" class="entry">
+	<td>Al-Ali, A.K. and Chowdhury, K.</td>
+	<td>TFRC-CR: An equation-based transport protocol for cognitive radio networks <p class="infolinks">[<a href="javascript:toggleInfo('Al-Ali2013a','abstract')">Abstract</a>] [<a href="javascript:toggleInfo('Al-Ali2013a','bibtex')">BibTeX</a>]</p></td>
+	<td>2013</td>
+	<td>Ad Hoc Networks<br/>Vol. 11(6), pp. 1836-1847&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1016/j.adhoc.2013.04.007">DOI</a> &nbsp;</td>
+</tr>
+<tr id="abs_Al-Ali2013a" class="abstract noshow">
+	<td colspan="6"><b>Abstract</b>: Reliable and high throughput data delivery in cognitive radio networks remains an open challenge owing to the inability of the source to quickly identify and react to changes in spectrum availability. The window-based rate adaptation in TCP relies on acknowledgments (ACKs) to self trigger the sending rate, which are often delayed or lost owing to intermittent primary user (PU) activity, resulting in an incorrect inference of congestion by the source node. This paper proposes the first equation-based transport protocol based on TCP Friendly Rate Control for Cognitive Radio, called as TFRC-CR, which allows immediate changes in the transmission rate based on the spectrum-related changes in the network environment. TFRC-CR has the following unique features: (i) it leverages the recent FCC mandated spectrum databases with minimum querying overhead, (ii) it enables fine adjustment of the transmission rate by identifying the instances of true network congestion, as well as (iii) provides guidelines on when to re-start the source transmission after a pause due to PU activity. TFRC-CR is evaluated through an extensive set of module additions to the ns-2 simulator which is also released for further investigation by the research community.</td>
+</tr>
+<tr id="bib_Al-Ali2013a" class="bibtex noshow">
+<td colspan="6"><b>BibTeX</b>:
+<pre>
+@article{Al-Ali2013a,
+  author = {Abdulla K. Al-Ali and Kaushik Chowdhury},
+  title = {TFRC-CR: An equation-based transport protocol for cognitive radio networks},
+  journal = {Ad Hoc Networks},
+  publisher = {Elsevier BV},
+  year = {2013},
+  volume = {11},
+  number = {6},
+  pages = {1836--1847},
+  doi = {https://doi.org/10.1016/j.adhoc.2013.04.007}
+}
+</pre></td>
+</tr>
+</tbody>
+</table>
+<footer>
+ <small>Created by <a href="http://jabref.sourceforge.net">JabRef</a> on 23/05/2019.</small>
+</footer>
+<!-- file generated by JabRef -->
+</body>
+</html>
